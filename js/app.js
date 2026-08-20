@@ -1,13 +1,13 @@
-/* UI wiring: map rendering, dropdowns, click handling, advice rendering. */
+/* UI wiring: map rendering, roster management, click handling, advice rendering. */
+
+const TEAM_COLORS = { you: '#3d8ff2', ally: '#3ecf7a', enemy: '#f2543d' };
+const TEAM_LETTERS = { you: 'Y', ally: 'A', enemy: 'E' };
 
 const state = {
   mapId: MAP_ARCHETYPES[0].id,
   slotCount: 4,
-  placing: 'you', // 'you' | 'enemy'
-  yourSlot: null,
-  enemySlot: null,
-  yourCivId: null,
-  enemyCivId: null,
+  placing: 'you', // 'you' | 'ally' | 'enemy'
+  players: [], // { slot, team: 'you'|'ally'|'enemy', civId: string|null }
 };
 
 function el(tag, attrs = {}, children = []) {
@@ -19,6 +19,19 @@ function el(tag, attrs = {}, children = []) {
   });
   children.forEach((c) => node.appendChild(c));
   return node;
+}
+
+function playersOfTeam(team) {
+  return state.players.filter((p) => p.team === team).sort((a, b) => a.slot - b.slot);
+}
+
+function civOptionsHtml(selectedId) {
+  const sorted = [...CIVS].sort((a, b) => a.name.localeCompare(b.name));
+  let html = `<option value="">-- choose a civilization --</option>`;
+  sorted.forEach((c) => {
+    html += `<option value="${c.id}"${c.id === selectedId ? ' selected' : ''}>${c.name}</option>`;
+  });
+  return html;
 }
 
 function populateMapSelect() {
@@ -35,31 +48,6 @@ function populateSlotCountSelect() {
   archetype.slotCounts.forEach((n) => sel.appendChild(el('option', { value: n, text: `${n} players` })));
   if (!archetype.slotCounts.includes(state.slotCount)) state.slotCount = archetype.slotCounts[0];
   sel.value = state.slotCount;
-}
-
-function populateCivSelects() {
-  const sorted = [...CIVS].sort((a, b) => a.name.localeCompare(b.name));
-  ['your-civ-select', 'enemy-civ-select'].forEach((id) => {
-    const sel = document.getElementById(id);
-    sel.innerHTML = '';
-    sel.appendChild(el('option', { value: '', text: '-- choose a civilization --' }));
-    sorted.forEach((c) => sel.appendChild(el('option', { value: c.id, text: c.name })));
-  });
-}
-
-function renderCivBlurb(civId, targetId) {
-  const target = document.getElementById(targetId);
-  const civ = getCiv(civId);
-  if (!civ) {
-    target.innerHTML = '<span class="empty-state">Pick a civilization to see its bonuses.</span>';
-    return;
-  }
-  const uu = civ.uniqueUnits.map((u) => `${u.name} (${UNIT_CLASSES[u.class].label})`).join(', ');
-  target.innerHTML = `
-    <div><b>${civ.name}</b> — ${civ.blurb}</div>
-    <div style="margin-top:6px;">Unique unit${civ.uniqueUnits.length > 1 ? 's' : ''}: ${uu}</div>
-    <div style="margin-top:4px;">${civ.bonuses.slice(0, 3).map((b) => `<span class="pill">${b}</span>`).join('')}</div>
-  `;
 }
 
 function renderMap() {
@@ -100,14 +88,23 @@ function renderMap() {
     }
   }
 
+  // Stable per-team ordinal labels (A1, A2, E1, E2...) based on slot order.
+  const ordinal = {};
+  ['you', 'ally', 'enemy'].forEach((team) => {
+    playersOfTeam(team).forEach((p, i) => { ordinal[p.slot] = i + 1; });
+  });
+
   positions.forEach((p) => {
     if (archetype.waterRing) {
       svg += `<circle cx="${p.x}" cy="${p.y}" r="9" fill="#5c4a30" />`;
     }
+    const player = state.players.find((pl) => pl.slot === p.slot);
     let fill = '#3a4550';
     let label = String(p.slot + 1);
-    if (state.yourSlot === p.slot) { fill = '#3d8ff2'; label = 'Y'; }
-    if (state.enemySlot === p.slot) { fill = '#f2543d'; label = 'E'; }
+    if (player) {
+      fill = TEAM_COLORS[player.team];
+      label = player.team === 'you' ? 'Y' : `${TEAM_LETTERS[player.team]}${ordinal[p.slot]}`;
+    }
     svg += `<g class="map-slot" data-slot="${p.slot}">
       <circle class="slot-base" cx="${p.x}" cy="${p.y}" r="6" fill="${fill}" stroke="#0a0e12" stroke-width="0.6" />
       <text x="${p.x}" y="${p.y}">${label}</text>
@@ -126,37 +123,127 @@ function renderMap() {
 }
 
 function onSlotClick(slot) {
+  const existing = state.players.find((p) => p.slot === slot);
+
   if (state.placing === 'you') {
-    state.yourSlot = state.yourSlot === slot ? null : slot;
-    if (state.enemySlot === slot) state.enemySlot = null;
+    state.players = state.players.filter((p) => p.team !== 'you' && p.slot !== slot);
+    state.players.push({ slot, team: 'you', civId: null });
+  } else if (existing) {
+    if (existing.team === 'you') {
+      // Don't let an ally/enemy click accidentally clobber the you-marker.
+    } else if (existing.team === state.placing) {
+      state.players = state.players.filter((p) => p.slot !== slot);
+    } else {
+      existing.team = state.placing;
+    }
   } else {
-    state.enemySlot = state.enemySlot === slot ? null : slot;
-    if (state.yourSlot === slot) state.yourSlot = null;
+    state.players.push({ slot, team: state.placing, civId: null });
   }
+
   renderMap();
+  renderRoster();
   updateAdviceButtonState();
 }
 
+function removePlayer(slot) {
+  state.players = state.players.filter((p) => p.slot !== slot);
+  renderMap();
+  renderRoster();
+  updateAdviceButtonState();
+}
+
+function setPlayerCiv(slot, civId) {
+  const player = state.players.find((p) => p.slot === slot);
+  if (player) player.civId = civId || null;
+  updateAdviceButtonState();
+}
+
+function renderRosterRow(player, showRemove) {
+  const civ = getCiv(player.civId);
+  const row = el('div', { class: 'roster-row' });
+  const chip = el('span', { class: 'roster-chip', style: `background:${TEAM_COLORS[player.team]}` , text: `Slot ${player.slot + 1}` });
+  row.appendChild(chip);
+
+  const select = el('select', { 'data-slot': player.slot });
+  select.innerHTML = civOptionsHtml(player.civId);
+  select.addEventListener('change', (e) => setPlayerCiv(player.slot, e.target.value));
+  row.appendChild(select);
+
+  if (showRemove) {
+    const removeBtn = el('button', { type: 'button', class: 'roster-remove', text: '×' });
+    removeBtn.addEventListener('click', () => removePlayer(player.slot));
+    row.appendChild(removeBtn);
+  }
+
+  if (civ) {
+    const blurb = el('div', { class: 'civ-blurb' });
+    const uu = civ.uniqueUnits.map((u) => `${u.name} (${UNIT_CLASSES[u.class].label})`).join(', ');
+    blurb.innerHTML = `<div><b>${civ.name}</b> — ${civ.blurb}</div><div style="margin-top:6px;">Unique unit${civ.uniqueUnits.length > 1 ? 's' : ''}: ${uu}</div>`;
+    row.appendChild(blurb);
+  }
+
+  return row;
+}
+
+function renderRoster() {
+  const you = playersOfTeam('you')[0];
+  const youWrap = document.getElementById('roster-you');
+  youWrap.innerHTML = '';
+  youWrap.appendChild(you
+    ? renderRosterRow(you, true)
+    : el('div', { class: 'empty-state', text: 'Click "Place: You" then click a map slot.' }));
+
+  const alliesWrap = document.getElementById('roster-allies');
+  alliesWrap.innerHTML = '';
+  const allies = playersOfTeam('ally');
+  if (allies.length === 0) {
+    alliesWrap.appendChild(el('div', { class: 'empty-state', text: 'Optional — click "Place: Ally" then click map slots to add teammates.' }));
+  } else {
+    allies.forEach((p) => alliesWrap.appendChild(renderRosterRow(p, true)));
+  }
+
+  const enemiesWrap = document.getElementById('roster-enemies');
+  enemiesWrap.innerHTML = '';
+  const enemies = playersOfTeam('enemy');
+  if (enemies.length === 0) {
+    enemiesWrap.appendChild(el('div', { class: 'empty-state', text: 'Click "Place: Enemy" then click map slots to add opponents.' }));
+  } else {
+    enemies.forEach((p) => enemiesWrap.appendChild(renderRosterRow(p, true)));
+  }
+}
+
 function updateAdviceButtonState() {
-  const ready = state.yourCivId && state.enemyCivId && state.yourSlot !== null && state.enemySlot !== null;
+  const you = playersOfTeam('you')[0];
+  const enemies = playersOfTeam('enemy');
+  const allPlaced = state.players.every((p) => p.civId);
+  const ready = you && you.civId && enemies.length > 0 && allPlaced;
   document.getElementById('get-advice').disabled = !ready;
 }
 
 function renderAdvice() {
-  const yourCiv = getCiv(state.yourCivId);
-  const enemyCiv = getCiv(state.enemyCivId);
+  const you = playersOfTeam('you')[0];
+  const allies = playersOfTeam('ally').map((p) => ({ slot: p.slot, civ: getCiv(p.civId) }));
+  const enemies = playersOfTeam('enemy').map((p) => ({ slot: p.slot, civ: getCiv(p.civId) }));
   const archetype = getMapArchetype(state.mapId);
-  const proximity = proximityLabel(state.yourSlot, state.enemySlot, state.slotCount, archetype);
-  const advice = getAdvice({ yourCiv, enemyCiv, mapArchetype: archetype, proximity });
+
+  const advice = getAdvice({
+    you: { slot: you.slot, civ: getCiv(you.civId) },
+    allies,
+    enemies,
+    mapArchetype: archetype,
+    slotCount: state.slotCount,
+  });
 
   const panel = document.getElementById('advice-panel');
   panel.classList.remove('hidden');
 
   const proximityLabels = { close: 'Close', medium: 'Medium distance', far: 'Far apart', 'water-separated': 'Separated by water' };
+  const enemyNames = enemies.map((e) => e.civ.name).join(', ');
+  const allyNames = allies.map((a) => a.civ.name).join(', ');
 
   panel.innerHTML = `
-    <h2>Advice: ${yourCiv.name} vs ${enemyCiv.name}</h2>
-    <p class="map-desc">${archetype.name} · ${proximityLabels[proximity]}</p>
+    <h2>Advice: ${getCiv(you.civId).name} vs ${enemyNames}${allyNames ? ` (with ${allyNames})` : ''}</h2>
+    <p class="map-desc">${archetype.name} · Nearest opponent: ${proximityLabels[advice.proximity]}</p>
 
     <div class="advice-section">
       <h3>Build Order</h3>
@@ -169,6 +256,7 @@ function renderAdvice() {
       <p>Enemy strengths: ${advice.unitComp.enemyClasses.map((c) => `<span class="pill">${UNIT_CLASSES[c].label}</span>`).join('') || '<span class="empty-state">none listed</span>'}</p>
       <p>Recommended focus: ${advice.unitComp.topClasses.map((c) => `<span class="pill">${UNIT_CLASSES[c].label}</span>`).join('') || '<span class="empty-state">no strong hard-counter found — play to your own civ\'s core strengths</span>'}</p>
       ${advice.unitComp.uniqueCallouts.length ? `<ul>${advice.unitComp.uniqueCallouts.map((c) => `<li>${c}</li>`).join('')}</ul>` : ''}
+      ${advice.unitComp.allyStrengths.length ? `<p>Your allies already lean on: ${advice.unitComp.allyStrengths.map((c) => `<span class="pill">${UNIT_CLASSES[c].label}</span>`).join('')} — the recommendation above is nudged toward covering what they don't.</p>` : ''}
     </div>
 
     <div class="advice-section">
@@ -182,25 +270,23 @@ function renderAdvice() {
 function init() {
   populateMapSelect();
   populateSlotCountSelect();
-  populateCivSelects();
   renderMap();
-  renderCivBlurb(null, 'your-civ-blurb');
-  renderCivBlurb(null, 'enemy-civ-blurb');
+  renderRoster();
 
   document.getElementById('map-select').addEventListener('change', (e) => {
     state.mapId = e.target.value;
-    state.yourSlot = null;
-    state.enemySlot = null;
+    state.players = [];
     populateSlotCountSelect();
     renderMap();
+    renderRoster();
     updateAdviceButtonState();
   });
 
   document.getElementById('slot-count-select').addEventListener('change', (e) => {
     state.slotCount = Number(e.target.value);
-    state.yourSlot = null;
-    state.enemySlot = null;
+    state.players = [];
     renderMap();
+    renderRoster();
     updateAdviceButtonState();
   });
 
@@ -210,18 +296,6 @@ function init() {
       document.querySelectorAll('.place-toggle button').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
     });
-  });
-
-  document.getElementById('your-civ-select').addEventListener('change', (e) => {
-    state.yourCivId = e.target.value || null;
-    renderCivBlurb(state.yourCivId, 'your-civ-blurb');
-    updateAdviceButtonState();
-  });
-
-  document.getElementById('enemy-civ-select').addEventListener('change', (e) => {
-    state.enemyCivId = e.target.value || null;
-    renderCivBlurb(state.enemyCivId, 'enemy-civ-blurb');
-    updateAdviceButtonState();
   });
 
   document.getElementById('get-advice').addEventListener('click', renderAdvice);

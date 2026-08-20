@@ -56,14 +56,14 @@ function civCanUse(civ, unitClass) {
   return civ.strongUnits.includes(unitClass) || civ.uniqueUnits.some((u) => u.class === unitClass);
 }
 
-// Given a list of enemy strong classes, return counter classes ranked by how many
-// enemy strengths they answer (a class that counters 2 of their strengths ranks above one that counters 1).
-function bestCountersFor(enemyClasses) {
+// Given class -> weight (e.g. how many enemies are strong in that class), return
+// counter-class -> score, where a counter answering multiple/heavier threats scores higher.
+function counterScores(classWeights) {
   const score = {};
-  enemyClasses.forEach((ec) => {
+  Object.entries(classWeights).forEach(([ec, weight]) => {
     countersOf(ec).forEach((counterClass) => {
-      score[counterClass] = (score[counterClass] || 0) + 1;
+      score[counterClass] = (score[counterClass] || 0) + weight;
     });
   });
-  return Object.keys(score).sort((a, b) => score[b] - score[a]);
+  return score;
 }

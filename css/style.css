@@ -5,6 +5,7 @@
   --text: #e8edf2;
   --muted: #93a3b3;
   --accent-you: #3d8ff2;
+  --accent-ally: #3ecf7a;
   --accent-enemy: #f2543d;
   --accent-gold: #d7a13b;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -108,6 +109,12 @@ select, input[type=text] {
   color: #fff;
 }
 
+.place-toggle button.active[data-marker="ally"] {
+  background: var(--accent-ally);
+  border-color: var(--accent-ally);
+  color: #06210f;
+}
+
 .place-toggle button.active[data-marker="enemy"] {
   background: var(--accent-enemy);
   border-color: var(--accent-enemy);
@@ -137,6 +144,7 @@ select, input[type=text] {
 .civ-picker:last-child { margin-bottom: 0; }
 .civ-picker h3 { margin: 0 0 6px; font-size: 0.9rem; }
 .civ-picker h3.you { color: var(--accent-you); }
+.civ-picker h3.ally { color: var(--accent-ally); }
 .civ-picker h3.enemy { color: var(--accent-enemy); }
 
 .civ-blurb {
@@ -150,6 +158,43 @@ select, input[type=text] {
 }
 
 .civ-blurb b { color: var(--text); }
+
+.roster-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.roster-row:last-child { border-bottom: none; }
+.roster-row select { flex: 1; min-width: 140px; }
+.roster-row .civ-blurb { flex-basis: 100%; margin-top: 4px; }
+
+.roster-chip {
+  color: #0a0e12;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.roster-remove {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.roster-remove:hover { color: var(--accent-enemy); border-color: var(--accent-enemy); }
 
 #get-advice {
   width: 100%;

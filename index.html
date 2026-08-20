@@ -26,6 +26,7 @@
     </div>
     <div class="place-toggle">
       <button type="button" data-marker="you" class="active">Place: You</button>
+      <button type="button" data-marker="ally">Place: Ally</button>
       <button type="button" data-marker="enemy">Place: Enemy</button>
     </div>
     <div id="map-svg-wrap"></div>
@@ -36,13 +37,15 @@
     <h2>Civilizations</h2>
     <div class="civ-picker">
       <h3 class="you">Your Civilization</h3>
-      <select id="your-civ-select"></select>
-      <div class="civ-blurb" id="your-civ-blurb"></div>
+      <div id="roster-you"></div>
     </div>
     <div class="civ-picker">
-      <h3 class="enemy">Enemy Civilization</h3>
-      <select id="enemy-civ-select"></select>
-      <div class="civ-blurb" id="enemy-civ-blurb"></div>
+      <h3 class="ally">Allies</h3>
+      <div id="roster-allies"></div>
+    </div>
+    <div class="civ-picker">
+      <h3 class="enemy">Enemies</h3>
+      <div id="roster-enemies"></div>
     </div>
     <button id="get-advice" disabled>Get Advice</button>
   </section>
